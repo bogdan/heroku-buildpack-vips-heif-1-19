@@ -56,8 +56,14 @@ function vendor() {
 }
 
 echo "Vendoring binaries" | arrow
-# Adjust the path to your heroku-22.tar.gz file if necessary
-vendor "${ROOT_DIR}/build/heroku-22.tar.gz" "$BUILD_DIR/vendor"
+# Select the correct prebuilt archive for the current Heroku stack
+ARCHIVE_PATH="${ROOT_DIR}/build/${STACK}.tar.gz"
+if [[ ! -f "$ARCHIVE_PATH" ]]; then
+  echo "Error: Prebuilt archive not found for stack '$STACK' at $ARCHIVE_PATH" | indent
+  echo "Ensure you have built and committed ${STACK}.tar.gz under build/." | indent
+  exit 1
+fi
+vendor "$ARCHIVE_PATH" "$BUILD_DIR/vendor"
 
 echo "Configuring build environment" | arrow
 

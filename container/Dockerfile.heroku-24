@@ -1,27 +1,29 @@
-ARG STACK_VERSION=22
+ARG STACK_VERSION=24
 FROM heroku/heroku:$STACK_VERSION
+
+# Ensure we can run apt and install packages
+USER root
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
+RUN mkdir -p /var/lib/apt/lists/partial \
+  && apt-get update \
   && apt-get install -y \
   build-essential \
   libtool \
   wget \
+  git \
   python3-pip \
   ninja-build \
-  pkg-config 
+  pkg-config \
+  cmake
 
-RUN pip3 install meson
+RUN apt-get update && apt-get install -y meson
 
-# use the heroku platform libraries when we can
+# Use Heroku platform libraries when possible
+# See https://devcenter.heroku.com/articles/stack-packages
 #
-# see https://devcenter.heroku.com/articles/stack-packages
-#
-# libgsf needs libxml2
-# 
-# this should only pull in header files and should not create any extra run
-# time dependencies
+# This should only pull in header files and should not create extra runtime deps
 RUN apt-get install -y \
   glib-2.0-dev \
   libexpat1-dev \
@@ -30,7 +32,7 @@ RUN apt-get install -y \
   libpng-dev \
   libwebp-dev \
   libjpeg-turbo8-dev \
-  libtiff5-dev \
+  libtiff-dev \
   libexif-dev \
   liblcms2-dev \
   libxml2-dev \
@@ -43,31 +45,24 @@ RUN apt-get install -y \
   libgsf-1-dev \
   libcgif-dev \
   libde265-dev \
-  libaom-dev \
-  cmake
+  libaom-dev
 
-# Clone the libheif repository
+# Build libheif from source (1.19.x+ for bugfixes)
 RUN git clone https://github.com/strukturag/libheif.git /libheif
-
-# Build and install libheif
 WORKDIR /libheif/build
-RUN cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local && \
-  make -j$(nproc) && \
-  make install
-  
+RUN cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+  && make -j$(nproc) \
+  && make install
+
 WORKDIR /usr/local/src
 
-# build to this prefix 
-#  - heroku has /usr/local/lib on the default ld.so.conf search path, so 
-#    this is convenient
-#  - heroku has a basic dir structure in /usr/local, but no files
+# Build to this prefix (Heroku has /usr/local/lib on ld.so.conf search path)
 ARG PREFIX=/usr/local
 ENV PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
 
-# use libspng for PNG load and save
+# Use libspng for PNG load/save
 ARG SPNG_VERSION=0.7.2
 ARG SPNG_URL=https://github.com/randy408/libspng/archive/refs/tags
-
 RUN wget ${SPNG_URL}/v${SPNG_VERSION}.tar.gz \
   && tar xf v${SPNG_VERSION}.tar.gz \
   && cd libspng-${SPNG_VERSION} \
@@ -76,32 +71,27 @@ RUN wget ${SPNG_URL}/v${SPNG_VERSION}.tar.gz \
   && ninja \
   && ninja install
 
+# libvips
 ARG VIPS_VERSION=8.14.3
 ARG VIPS_URL=https://github.com/libvips/libvips/archive/refs/tags
-
 RUN wget ${VIPS_URL}/v${VIPS_VERSION}/v${VIPS_VERSION}.tar.gz \
   && tar xzf v${VIPS_VERSION}.tar.gz \
   && cd libvips-${VIPS_VERSION} \
   && meson setup build \
-  --prefix=$PREFIX \
-  --libdir=lib \
-  --buildtype=release \
-  # obscure file format that nobody will use \
-  -Dradiance=false \
-  # obscure file format that nobody will use \
-  -Danalyze=false \
-  # modules cause issues with loading heif files in ruby-vips \
-  -Dmodules=disabled \
-  # allows omitting gobject-introspection library \
-  -Dintrospection=disabled \
-  # use latest libheif from the ppa \
-  -Dheif=enabled \
+    --prefix=$PREFIX \
+    --libdir=lib \
+    --buildtype=release \
+    -Dradiance=false \
+    -Danalyze=false \
+    -Dmodules=disabled \
+    -Dintrospection=disabled \
+    -Dheif=enabled \
   && cd build \
   && meson compile \
   && meson install
 
-# clean and package
-ARG STACK_VERSION=22
+# Clean and package
+ARG STACK_VERSION=24
 RUN cd $PREFIX \
   && rm -rf bin/vipsprofile \
   && rm -rf lib/*.a lib/*.la lib/python* \
@@ -116,7 +106,7 @@ RUN cd $PREFIX \
 RUN ldconfig
 
 # Store configuration for easy viewing in the repo
-ARG STACK_VERSION=22
+ARG STACK_VERSION=24
 RUN cd $PREFIX \
   && echo "$ vips --vips-version" > "build/heroku-$STACK_VERSION.config.log" \
   && vips --vips-version >> "build/heroku-$STACK_VERSION.config.log" \
@@ -124,26 +114,7 @@ RUN cd $PREFIX \
   && echo "$ vips --vips-config" >> "build/heroku-$STACK_VERSION.config.log" \
   && vips --vips-config >> "build/heroku-$STACK_VERSION.config.log"
 
-# install and test ruby-vips to confirm we can pick up the libraries
-# correctly 
-# we need ruby-dev to install ruby-ffi
-RUN apt-get install -y ruby-dev
-RUN gem install ruby-vips
-RUN ruby -e 'require "vips"; puts "ruby-vips: libvips #{Vips::LIBRARY_VERSION}"'
-# 
-# Test the conversion of a HEIC image to JPEG
-# 
-# Run the container in interactive with automatic cleanup
-# docker run -it --rm --name my_container libvips-heroku-22:8.16.0 bash
-# 
-# Run in another terminal
-# docker cp ./test-images/Image.heic my_container:/tmp/Image.heic
-# 
-# Copy and paste the following into the ssh session to test the conversion
-# ruby -e '
-# require "vips"
-# puts "Starting conversion of /tmp/Image.heic to /tmp/Image.jpg"
-# image = Vips::Image.new_from_file("/tmp/Image.heic")
-# image.write_to_file("/tmp/Image.jpg")
-# puts "Converted /tmp/Image.heic to /tmp/Image.jpg"
-# '
+# Smoke test ruby-vips
+RUN apt-get install -y ruby-dev \
+  && gem install ruby-vips \
+  && ruby -e 'require "vips"; puts "ruby-vips: libvips #{Vips::LIBRARY_VERSION}"'
