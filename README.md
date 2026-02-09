@@ -2,7 +2,7 @@
 
 ## Updates
 
-I build this buildpack to support heroku-22 with libheif 1.19.3 built-in to resolve [this issue](https://github.com/strukturag/libheif/issues/1190).
+I build this buildpack to support heroku-24 with libheif 1.19.3 built-in to resolve [this issue](https://github.com/strukturag/libheif/issues/1190).
 
 ## Disclaimer
 
@@ -18,7 +18,7 @@ comment](https://github.com/Newlywords/heroku-buildpack-vips/issues/36#issuecomm
 The brief usage of pdfium that started August 2023 ended September 17, 2023. The buildpack is using poppler again due
 to https://github.com/Newlywords/heroku-buildpack-vips/issues/41#issuecomment-1722462354.
 
-As of heroku-20 and heroku-22, the following packages are already installed and don't need to be installed using an
+As of heroku-24, the following packages are already installed and don't need to be installed using an
 Aptfile:
 
 - libglib2.0-0
@@ -28,11 +28,10 @@ Found out more information like this in [the changelog](CHANGES.md).
 
 ## About this buildpack
 
-A VIPS buildpack for the modern Heroku stacks. This stack supports the following
-stacks:
+A VIPS buildpack for the modern Heroku stacks. This buildpack supports the following
+stack:
 
-- heroku-20
-- heroku-22
+- heroku-24
 
 If you have problems on any of these stacks, or if a new stack comes out that is
 unsupported, please file an issue.
